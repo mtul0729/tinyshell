@@ -195,8 +195,12 @@ fn exec_cmd(args: &[&str], history: &Vec<String>) -> io::Result<()> {
             println!("########Quiting hjpsh########");
             std::process::exit(0)
         }
-        _ => {
-            eprintln!("command not found: {}", args.first().unwrap());
+        cmd => {
+            use std::process::Command;
+            let status =  Command::new(cmd).args(&args[1..]).status()?;
+            if !status.success() {
+                eprintln!("{}: command not found", cmd);
+            }
             Ok(())
         }
     }
