@@ -2,7 +2,12 @@ use std::fs::File;
 use std::io;
 use std::path::Path;
 use std::{env, io::Write};
-
+mod lexer;
+use lexer::lex;
+mod parser;
+use parser::parse;
+mod eval;
+use eval::ShellAST;
 fn main() -> io::Result<()> {
     println!("########Welcom to hjpsh!########");
 
@@ -16,14 +21,16 @@ fn main() -> io::Result<()> {
         // read command
         let mut line = String::new();
         io::stdin().read_line(&mut line)?;
+
         let args: Vec<_> = line.split_whitespace().collect();
 
         // push command to history
         let command = args.join(" ");
         history.push(command);
 
-        // execute command
-        let _ = exec_cmd(&args[..], &history).map_err(|err| {
+        let tokens = lex(line.as_str());
+        let ast = parse(&tokens);
+        let _ = ast.eval().map_err(|err| {
             eprintln!("{:?}", err);
         });
     }
@@ -135,14 +142,11 @@ fn exec_cmd(args: &[&str], history: &Vec<String>) -> io::Result<()> {
                 Ok(())
             }
         },
-        "cat2" => {
-            match args.get(1) {
-                None => {
-                    eprintln!("missing file operand");
-                }
-                Some(file) => {
-                    cat2(file)?;
-                }
+        "cat2" => match args.get(1) {
+            Some(path) => cat2(path),
+            None => {
+                eprintln!("missing file operand");
+                Ok(())
             }
             Ok(())
         },
@@ -197,7 +201,7 @@ fn exec_cmd(args: &[&str], history: &Vec<String>) -> io::Result<()> {
         }
         cmd => {
             use std::process::Command;
-            let status =  Command::new(cmd).args(&args[1..]).status()?;
+            let status = Command::new(cmd).args(&args[1..]).status()?;
             if !status.success() {
                 eprintln!("{}: command not found", cmd);
             }
