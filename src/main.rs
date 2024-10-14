@@ -8,7 +8,12 @@ mod parser;
 use parser::parse;
 mod eval;
 use eval::ShellAST;
+use log::{debug, error, log_enabled, info, Level};
+
 fn main() -> io::Result<()> {
+    let err_log = File::create("hjpsh_err.log")?;
+    env_logger::builder().target(env_logger::fmt::Target::Pipe(Box::new(err_log))).init();
+    
     println!("########Welcom to hjpsh!########");
 
     let mut history = Vec::new();
@@ -32,6 +37,7 @@ fn main() -> io::Result<()> {
         let ast = parse(&tokens);
         let _ = ast.eval().map_err(|err| {
             eprintln!("{:?}", err);
+            error!("{:?}", err);
         });
     }
 }
