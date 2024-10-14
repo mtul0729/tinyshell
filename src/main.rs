@@ -148,7 +148,6 @@ fn exec_cmd(args: &[&str], history: &Vec<String>) -> io::Result<()> {
                 eprintln!("missing file operand");
                 Ok(())
             }
-            Ok(())
         },
         "cp2" => {
             match args[1..] {
