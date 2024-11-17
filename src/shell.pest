@@ -1,0 +1,35 @@
+/// 整体命令
+command_line = { builtin_cmd | outer_cmd }
+
+
+/// 内置命令不支持管道命令与重定向
+builtin_cmd = {builtin_cmd_name ~ argument* }
+/// 内置命令名,以2结尾
+builtin_cmd_name = @{ ASCII_ALPHA_LOWER+ ~ "2" }
+
+
+/// 外部命令,可以是管道命令、带重定向的简单命令
+outer_cmd = { pipeline ~ (redirect | append_redirect)? }
+
+/// 管道命令：简单命令 + 管道符（多个命令通过管道符连接）
+/// 为编程简单起见，将简单命令也看作管道命令
+pipeline = { simple_command ~ ("|" ~ simple_command)* }
+
+/// 简单命令：命令名 + 参数（可选多个参数）
+simple_command = { command_name ~ argument* }
+
+/// 重定向命令：> 
+redirect = { ">" ~ file }
+/// 重定向命令：>>
+append_redirect = { ">>" ~ file }
+
+
+/// 字符串：命令名可以是任意非空格的字符
+command_name = @{ (ASCII_ALPHANUMERIC | "_" | "-" | "." )+ }
+/// 字符串：参数可以是任意非空格的字符
+argument     = @{ (ASCII_ALPHANUMERIC | "_" | "-" | "." )+ }
+/// 字符串：文件名可以是任意非空格的字符
+file         = @{ (ASCII_ALPHANUMERIC | "_" | "-" | "." )+ }
+
+/// 空格和制表符
+WHITESPACE = _{ " " | "\t" } // 空格和制表符

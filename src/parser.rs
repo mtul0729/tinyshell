@@ -1,180 +1,85 @@
-use crate::lexer::Token;
-use crate::eval::ShellAST;
+use anyhow::bail;
+use anyhow::Ok;
+use anyhow::Result;
+use pest::Parser;
+use pest_derive::Parser;
 
-pub fn parse(tokens: &[Token]) -> ShellAST {
-    let mut pos = 0;
-    parse_pipeline(tokens, &mut pos)
+#[derive(Parser)]
+#[grammar = "shell.pest"]
+pub struct ShellParser;
+
+struct SimpleCommand<'a> {
+    command_name: &'a str,
+    args: Vec<&'a str>,
 }
 
-// 解析管道表达式
-fn parse_pipeline(tokens: &[Token], pos: &mut usize) -> ShellAST {
-    let mut left = parse_command(tokens, pos);
+struct Pipeline<'a> {
+    commands: Vec<SimpleCommand<'a>>,
+}
 
-    while *pos < tokens.len() {
-        if tokens[*pos] == Token::Pipe {
-            *pos += 1;
-            if *pos >= tokens.len() {
-                // 检查右边是否有命令
-                panic!("Syntax error: missing command after '|'");
-            }
-            let right = parse_command(tokens, pos);
-            left = ShellAST::Pipe {
-                left: Box::new(left),
-                right: Box::new(right),
+enum RedirectFile<'a> {
+    Redirect(&'a str),
+    AppendRedirect(&'a str),
+}
+
+struct OuterCommandLine<'a> {
+    pipeline: Pipeline<'a>,
+    redirect: Option<RedirectFile<'a>>,
+}
+
+struct BuiltinCommandLine<'a>(SimpleCommand<'a>);
+
+pub enum CommandLine<'a> {
+    Outer(OuterCommandLine<'a>),
+    Builtin(BuiltinCommandLine<'a>),
+}
+
+pub fn parse_cmdline<'a>(cmd: &'a str) -> Result<CommandLine<'a>> {
+    let cmd_line = ShellParser::parse(Rule::command_line, cmd)?
+        .next()
+        .unwrap() // command_line
+        .into_inner()
+        .next()
+        .unwrap(); // buildin_cmd or outer_cmd
+
+    match cmd_line.as_rule() {
+        Rule::builtin_cmd => {
+            todo!("内置命令暂未实现");
+        }
+        Rule::outer_cmd => {
+            let mut parts = cmd_line.into_inner();
+            let pipeline = parts.next().unwrap();
+            if pipeline.as_rule() != Rule::pipeline {
+                bail!(
+                    "命令类型不匹配, 期望 pipeline, 实际 {:?}",
+                    pipeline.as_rule()
+                );
             };
-        } else {
-            break;
-        }
-    }
+            let commands = pipeline.into_inner();
+            let mut pipeline = Pipeline {
+                commands: Vec::new(),
+            };
+            for command in commands {
+                let mut command = command.into_inner();
+                let command_name = command.next().unwrap().as_str();
+                let args = command.map(|arg| arg.as_str()).collect();
+                pipeline.commands.push(SimpleCommand { command_name, args });
+            }
 
-    left
-}
-
-// 解析命令和重定向
-fn parse_command(tokens: &[Token], pos: &mut usize) -> ShellAST {
-    if let Token::Command(cmd) = &tokens[*pos] {
-        let mut args = Vec::new();
-        *pos += 1;
-
-        while *pos < tokens.len() {
-            match &tokens[*pos] {
-                Token::Arg(arg) => {
-                    args.push(arg.clone());
-                    *pos += 1;
+            let redirect = parts.next().map(|redirect| match redirect.as_rule() {
+                Rule::redirect => {
+                    let file = redirect.into_inner().next().unwrap().as_str();
+                    RedirectFile::Redirect(file)
                 }
-                Token::RedirectOutput | Token::AppendOutput => {
-                    let append = matches!(&tokens[*pos], Token::AppendOutput);
-                    *pos += 1;
-
-                    if let Token::File(file) = &tokens[*pos] {
-                        *pos += 1;
-                        return ShellAST::OutputRedirect {
-                            command: Box::new(ShellAST::Command {
-                                command: cmd.clone(),
-                                args,
-                            }),
-                            file: file.clone(),
-                            append,
-                        };
-                    }
+                Rule::append_redirect => {
+                    let file = redirect.into_inner().next().unwrap().as_str();
+                    RedirectFile::AppendRedirect(file)
                 }
-                _ => break,
-            }
+                _ => unreachable!(),
+            });
+
+            Ok(CommandLine::Outer(OuterCommandLine { pipeline, redirect }))
         }
-
-        ShellAST::Command {
-            command: cmd.clone(),
-            args,
-        }
-    } else {
-        panic!("Expected a command, found {:?}", tokens[*pos]);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_simple_command() {
-        let tokens = vec![
-            Token::Command("echo".to_string()),
-            Token::Arg("hello".to_string()),
-        ];
-        let ast = parse(&tokens);
-        assert_eq!(
-            ast,
-            ShellAST::Command {
-                command: "echo".to_string(),
-                args: vec!["hello".to_string()],
-            }
-        );
-    }
-
-    #[test]
-    fn test_parse_command_with_output_redirect() {
-        let tokens = vec![
-            Token::Command("echo".to_string()),
-            Token::Arg("hello".to_string()),
-            Token::RedirectOutput,
-            Token::File("output.txt".to_string()),
-        ];
-        let ast = parse(&tokens);
-        assert_eq!(
-            ast,
-            ShellAST::OutputRedirect {
-                command: Box::new(ShellAST::Command {
-                    command: "echo".to_string(),
-                    args: vec!["hello".to_string()],
-                }),
-                file: "output.txt".to_string(),
-                append: false,
-            }
-        );
-    }
-
-    #[test]
-    fn test_parse_command_with_append_output_redirect() {
-        let tokens = vec![
-            Token::Command("echo".to_string()),
-            Token::Arg("hello".to_string()),
-            Token::AppendOutput,
-            Token::File("output.txt".to_string()),
-        ];
-        let ast = parse(&tokens);
-        assert_eq!(
-            ast,
-            ShellAST::OutputRedirect {
-                command: Box::new(ShellAST::Command {
-                    command: "echo".to_string(),
-                    args: vec!["hello".to_string()],
-                }),
-                file: "output.txt".to_string(),
-                append: true,
-            }
-        );
-    }
-
-    #[test]
-    fn test_parse_pipeline() {
-        let tokens = vec![
-            Token::Command("echo".to_string()),
-            Token::Arg("hello".to_string()),
-            Token::Pipe,
-            Token::Command("grep".to_string()),
-            Token::Arg("h".to_string()),
-        ];
-        let ast = parse(&tokens);
-        assert_eq!(
-            ast,
-            ShellAST::Pipe {
-                left: Box::new(ShellAST::Command {
-                    command: "echo".to_string(),
-                    args: vec!["hello".to_string()],
-                }),
-                right: Box::new(ShellAST::Command {
-                    command: "grep".to_string(),
-                    args: vec!["h".to_string()],
-                }),
-            }
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "Syntax error: missing command after '|'")]
-    fn test_parse_pipeline_missing_command() {
-        let tokens = vec![
-            Token::Command("echo".to_string()),
-            Token::Arg("hello".to_string()),
-            Token::Pipe,
-        ];
-        parse(&tokens);
-    }
-
-    #[test]
-    #[should_panic(expected = "Expected a command, found")]
-    fn test_parse_invalid_token() {
-        let tokens = vec![Token::Arg("hello".to_string())];
-        parse(&tokens);
+        _ => unreachable!(),
     }
 }

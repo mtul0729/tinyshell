@@ -2,18 +2,18 @@ use std::fs::File;
 use std::io;
 use std::path::Path;
 use std::{env, io::Write};
-mod lexer;
-use lexer::lex;
 mod parser;
-use parser::parse;
-mod eval;
-use eval::ShellAST;
-use log::{debug, error, log_enabled, info, Level};
+// use parser::parse;
+// use eval::ShellAST;
+use log::{debug, error, info, log_enabled, Level};
+mod builtin_cmd;
 
 fn main() -> io::Result<()> {
     let err_log = File::create("hjpsh_err.log")?;
-    env_logger::builder().target(env_logger::fmt::Target::Pipe(Box::new(err_log))).init();
-    
+    env_logger::builder()
+        .target(env_logger::fmt::Target::Pipe(Box::new(err_log)))
+        .init();
+
     println!("########Welcom to hjpsh!########");
 
     let mut history = Vec::new();
@@ -27,98 +27,19 @@ fn main() -> io::Result<()> {
         let mut line = String::new();
         io::stdin().read_line(&mut line)?;
 
-        let args: Vec<_> = line.split_whitespace().collect();
-
-        // push command to history
-        let command = args.join(" ");
-        history.push(command);
-
-        let tokens = lex(line.as_str());
-        let ast = parse(&tokens);
-        let _ = ast.eval().map_err(|err| {
-            eprintln!("{:?}", err);
-            error!("{:?}", err);
-        });
+        // let tokens = lex(line.as_str());
+        // let ast = parse(&tokens);
+        // let _ = ast.eval().map_err(|err| {
+        //     eprintln!("{:?}", err);
+        //     error!("{:?}", err);
+        // });
+        // record to history
+        history.push(line);
     }
 }
 
-mod buildin {
-    use super::*;
-    use env::set_current_dir;
-    use io::{Read, Write};
-    use std::fs;
-
-    pub fn pwd2() -> io::Result<()> {
-        let cwd = env::current_dir()?;
-        println!("{}", cwd.display());
-        Ok(())
-    }
-    pub fn cd2<P: AsRef<Path>>(path: P) -> io::Result<()> {
-        set_current_dir(path)
-    }
-    pub fn ls2<P: AsRef<Path>>(path: P) -> io::Result<()> {
-        // Read the directory
-        let entries = fs::read_dir(path)?;
-
-        // Iterate over the entries and print their names
-        for entry in entries {
-            let entry = entry?;
-            let file_name = entry.file_name();
-            let file_name_str = file_name.to_string_lossy();
-            println!("{}", file_name_str);
-        }
-
-        Ok(())
-    }
-    pub fn touch2<P: AsRef<Path>>(path: P) -> io::Result<File> {
-        File::create(path)
-    }
-    pub fn echo2(str: &str) -> io::Result<()> {
-        // whitespace is not allow
-        io::stdout().write_all(str.as_bytes())?;
-        io::stdout().flush()?;
-        println!("");
-        Ok(())
-    }
-    pub fn cat2<P: AsRef<Path>>(path: P) -> io::Result<()> {
-        let mut file = File::open(path)?;
-        let mut content = String::new();
-        file.read_to_string(&mut content)?;
-        print!("{content}");
-        Ok(())
-    }
-    pub fn cp2(from: &str, to: &str) -> io::Result<()> {
-        fs::copy(from, to)?;
-        Ok(())
-    }
-    pub fn rm(args: &[&str]) -> io::Result<()> {
-        for file in args {
-            fs::remove_file(file)?;
-        }
-        Ok(())
-    }
-    pub fn rm_recursive(dirs: &[&str]) -> io::Result<()> {
-        for dir in dirs {
-            fs::remove_dir_all(dir)?;
-        }
-        Ok(())
-    }
-    pub fn rename2(args: &[&str]) -> io::Result<()> {
-        if args.len() == 3 {
-            let old_path = &args[1];
-            let new_path = &args[2];
-            fs::rename(old_path, new_path)?;
-        }
-        Ok(())
-    }
-    pub fn history2(history: &Vec<String>) {
-        for (i, cmd) in history.iter().enumerate() {
-            println!("{} {}", i, cmd);
-        }
-    }
-}
 fn exec_cmd(args: &[&str], history: &Vec<String>) -> io::Result<()> {
-    use buildin::*;
+    use builtin_cmd::*;
     match *args.first().unwrap() {
         "pwd2" => pwd2(),
         "cd2" => match args.get(1) {
