@@ -4,17 +4,17 @@ use io::Read;
 use std::fs;
 
 /// 显示当前工作路径
-pub fn pwd2() -> io::Result<()> {
+fn pwd2() -> io::Result<()> {
     let cwd = env::current_dir()?;
     println!("{}", cwd.display());
     Ok(())
 }
 
-pub fn cd2<P: AsRef<Path>>(path: P) -> io::Result<()> {
+fn cd2<P: AsRef<Path>>(path: P) -> io::Result<()> {
     set_current_dir(path)
 }
 /// 显示路径path下（path为空时，则指当前工作目录）的所有文件和文件夹
-pub fn ls2<P: AsRef<Path>>(path: P) -> io::Result<()> {
+fn ls2<P: AsRef<Path>>(path: P) -> io::Result<()> {
     // Read the directory
     let entries = fs::read_dir(path)?;
 
@@ -29,17 +29,17 @@ pub fn ls2<P: AsRef<Path>>(path: P) -> io::Result<()> {
     Ok(())
 }
 /// 若文件filename不存在，则新建文件filename；否则什么都不做
-pub fn touch2<P: AsRef<Path>>(path: P) -> io::Result<File> {
+fn touch2<P: AsRef<Path>>(path: P) -> io::Result<File> {
     File::create(path)
 }
 /// 输出字符串str
-pub fn echo2(str: &str) -> io::Result<()> {
+fn echo2(str: &str) -> io::Result<()> {
     // whitespace is not allow
     println!("{str}");
     Ok(())
 }
 /// 显示文件filename内容，并在每一行前添加行号。
-pub fn cat2<P: AsRef<Path>>(path: P) -> io::Result<()> {
+fn cat2<P: AsRef<Path>>(path: P) -> io::Result<()> {
     let mut file = File::open(path)?;
     let mut content = String::new();
     file.read_to_string(&mut content)?;
@@ -49,36 +49,133 @@ pub fn cat2<P: AsRef<Path>>(path: P) -> io::Result<()> {
     Ok(())
 }
 /// 将filename1的内容拷贝到filename2中
-pub fn cp2(from: &str, to: &str) -> io::Result<()> {
+fn cp2(from: &str, to: &str) -> io::Result<()> {
     fs::copy(from, to)?;
     Ok(())
 }
 /// 删除文件
-pub fn rm(args: &[&str]) -> io::Result<()> {
+fn rm(args: &[&str]) -> io::Result<()> {
     for file in args {
         fs::remove_file(file)?;
     }
     Ok(())
 }
 /// 删除文件夹
-pub fn rm_recursive(dirs: &[&str]) -> io::Result<()> {
+fn rm_recursive(dirs: &[&str]) -> io::Result<()> {
     for dir in dirs {
         fs::remove_dir_all(dir)?;
     }
     Ok(())
 }
 /// 将文件filename1改名为filename2
-pub fn rename2(args: &[&str]) -> io::Result<()> {
-    if args.len() == 3 {
-        let old_path = &args[1];
-        let new_path = &args[2];
-        fs::rename(old_path, new_path)?;
-    }
-    Ok(())
+fn rename2(from: &str, to: &str) -> io::Result<()> {
+    fs::rename(from, to)
 }
 /// 打印使用过的所有历史命令
-pub fn history2(history: &Vec<String>) {
-    for (i, cmd) in history.iter().enumerate() {
-        println!("{} {}", i, cmd);
+fn history2() {
+    for (i, cmd) in HISTORY.lock().unwrap().iter().enumerate() {
+        print!("{} {}", i, cmd);
+    }
+}
+
+pub fn exec_builtin(cmd_name: &str, args: &[&str]) -> io::Result<()> {
+    use builtin_cmd::*;
+    match cmd_name {
+        "pwd2" => pwd2(),
+        "cd2" => match args.first() {
+            Some(path) => cd2(path),
+            // 默认切换到home目录
+            None => cd2(home::home_dir().unwrap()),
+        },
+
+        "ls2" => {
+            let path = args.first().unwrap_or(&".");
+            ls2(path)
+        }
+        "touch2" => {
+            match args[..] {
+                [] => {
+                    eprintln!("missing file operand");
+                }
+                [files] => {
+                    touch2(files)?;
+                }
+                _ => {
+                    eprintln!("too many arguments");
+                }
+            }
+            Ok(())
+        }
+        "echo2" => match args[..] {
+            [] => echo2(""),
+            [s] => echo2(s),
+            _ => {
+                eprintln!("echo: too many arguments");
+                Ok(())
+            }
+        },
+        "cat2" => match args.first() {
+            Some(path) => cat2(path),
+            None => {
+                eprintln!("missing file operand");
+                Ok(())
+            }
+        },
+        "cp2" => {
+            match args[..] {
+                [] => {
+                    eprintln!("missing file operand");
+                }
+                [from] => {
+                    eprintln!("missing destination file operand after '{}'", from);
+                }
+                [from, to] => cp2(from, to)?,
+                _ => {
+                    eprintln!("too many arguments");
+                }
+            }
+            Ok(())
+        }
+        "rm2" => {
+            match args {
+                [] => {
+                    eprintln!("missing file operand");
+                }
+                ["-r", ..] => {
+                    rm_recursive(&args[1..])?;
+                }
+                files => {
+                    rm(files)?;
+                }
+            }
+            Ok(())
+        }
+        "rename2" => {
+            match args {
+                [] => {
+                    eprintln!("missing file operand");
+                }
+                [from] => {
+                    eprintln!("missing destination file operand after '{}'", from);
+                }
+                [from, to] => rename2(from, to)?,
+                _ => {
+                    eprintln!("too many arguments");
+                }
+            }
+            Ok(())
+        }
+        "history2" => {
+            history2();
+            Ok(())
+        }
+        "quit" => {
+            println!("########Quiting hjpsh########");
+            std::process::exit(0)
+        }
+        cmd => {
+            eprintln!("{cmd}: command not found");
+            Ok(())
+        }
     }
 }
