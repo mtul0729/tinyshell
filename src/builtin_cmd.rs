@@ -74,7 +74,7 @@ fn rename2(from: &str, to: &str) -> io::Result<()> {
 /// 打印使用过的所有历史命令
 fn history2() {
     for (i, cmd) in HISTORY.lock().unwrap().iter().enumerate() {
-        print!("{} {}", i, cmd);
+        print!("{i:02} {cmd}");
     }
 }
 

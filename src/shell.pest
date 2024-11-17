@@ -3,9 +3,9 @@ command_line = { builtin_cmd | outer_cmd }
 
 
 /// 内置命令不支持管道命令与重定向
-builtin_cmd = { "quit" | builtin_cmd_name ~ argument* }
+builtin_cmd = { builtin_cmd_name ~ argument* }
 /// 内置命令名,以2结尾
-builtin_cmd_name = @{ ASCII_ALPHA_LOWER+ ~ "2" }
+builtin_cmd_name = @{ "quit" | ASCII_ALPHA_LOWER+ ~ "2" }
 
 
 /// 外部命令,可以是管道命令、带重定向的简单命令

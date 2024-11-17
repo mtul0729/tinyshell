@@ -58,6 +58,7 @@ impl OuterCommandLine<'_> {
                 let file = std::fs::OpenOptions::new()
                     .create(true)
                     .append(redirect.append)
+                    .write(true)
                     .open(redirect.file)?;
                 Stdio::from(file)
             }
@@ -105,12 +106,6 @@ pub fn parse_cmdline(cmd: &str) -> Result<CommandLine> {
         Rule::outer_cmd => {
             let mut parts = cmd_line.into_inner();
             let pipeline = parts.next().unwrap();
-            // if pipeline.as_rule() != Rule::pipeline {
-            //     bail!(
-            //         "命令类型不匹配, 期望 pipeline, 实际 {:?}",
-            //         pipeline.as_rule()
-            //     );
-            // };
             let commands = pipeline.into_inner();
             let mut pipeline = Pipeline {
                 commands: Vec::new(),

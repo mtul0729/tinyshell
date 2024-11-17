@@ -30,14 +30,14 @@ fn main() -> io::Result<()> {
 
         match parser::parse_cmdline(line.trim()) {
             Ok(cmd) => {
-            if let Err(err) = cmd.run() {
-                eprintln!("Error executing command: {:?}", err);
-                error!("Error executing command: {:?}", err);
-            }
+                if let Err(err) = cmd.run() {
+                    eprintln!("Error executing command: {:?}", err);
+                    error!("Error executing command: {:?}", err);
+                }
             }
             Err(err) => {
-            eprintln!("Error parsing command: {:?}", err);
-            error!("Error parsing command: {:?}", err);
+                eprintln!("Error parsing command: {:?}", err);
+                error!("Error parsing command: {:?}", err);
             }
         }
         // record to history
