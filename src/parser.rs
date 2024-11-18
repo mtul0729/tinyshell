@@ -7,11 +7,13 @@ use pest_derive::Parser;
 #[grammar = "shell.pest"]
 struct ShellParser;
 
+#[derive(Debug)]
 pub struct SimpleCommand<'a> {
     pub command_name: &'a str,
     pub args: Vec<&'a str>,
 }
 
+#[derive(Debug)]
 struct Pipeline<'a> {
     commands: Vec<SimpleCommand<'a>>,
 }
@@ -40,11 +42,13 @@ fn run_outer_cmd(
     }
 }
 
+#[derive(Debug)]
 struct RedirectFile<'a> {
     file: &'a str,
     append: bool,
 }
 
+#[derive(Debug)]
 pub struct OuterCommandLine<'a> {
     pipeline: Pipeline<'a>,
     redirect: Option<RedirectFile<'a>>,
@@ -71,6 +75,7 @@ impl OuterCommandLine<'_> {
     }
 }
 
+#[derive(Debug)]
 pub enum CommandLine<'a> {
     Outer(OuterCommandLine<'a>),
     Builtin(SimpleCommand<'a>),

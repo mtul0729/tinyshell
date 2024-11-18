@@ -24,12 +24,14 @@ redirect = { ">" ~ file }
 append_redirect = { ">>" ~ file }
 
 
-/// 字符串：命令名可以是任意非空格的字符
-command_name = @{ (ASCII_ALPHANUMERIC | "_" | "-" | "." )+ }
-/// 字符串：参数可以是任意非空格的字符
-argument     = @{ (ASCII_ALPHANUMERIC | "_" | "-" | "." )+ }
-/// 字符串：文件名可以是任意非空格的字符
-file         = @{ (ASCII_ALPHANUMERIC | "_" | "-" | "." )+ }
+/// 字符串：命令名可以是任意非空格或操作符的字符
+command_name = _{identity} 
+/// 字符串：参数可以是任意非空格或操作符的字符
+argument     = _{identity}
+/// 字符串：文件名可以是任意非空格或操作符的字符
+file         = _{identity} 
+
+identity = @{ (!(WHITESPACE | ">" | ">>" | "|") ~ ANY)+ }
 
 /// 空格和制表符
 WHITESPACE = _{ " " | "\t" } // 空格和制表符
