@@ -105,21 +105,22 @@ pub fn parse_cmdline(cmd: &str) -> Result<CommandLine> {
         }
         Rule::outer_cmd => {
             let mut parts = cmd_line.into_inner();
-            let commands = parts.next().unwrap().into_inner();
-            let mut piped_cmds = Vec::new();
-            for command in commands {
-                let mut command = command.into_inner();
-                let command_name = command.next().unwrap().as_str();
-                let args = command.map(|arg| arg.as_str()).collect();
-                piped_cmds.push(SimpleCommand { command_name, args });
-            }
-
+            let piped_cmds = parts
+                .next()
+                .unwrap()
+                .into_inner()
+                .map(|command| {
+                    let mut command = command.into_inner();
+                    let command_name = command.next().unwrap().as_str();
+                    let args = command.map(|arg| arg.as_str()).collect();
+                    SimpleCommand { command_name, args }
+                })
+                .collect();
             let redirect = parts.next().map(|redirect| {
                 let append = redirect.as_rule() == Rule::append_redirect;
                 let file = redirect.into_inner().next().unwrap().as_str();
                 RedirectFile { file, append }
             });
-
             Ok(CommandLine::Extern(ExternCommandLine {
                 piped_cmds,
                 redirect,
