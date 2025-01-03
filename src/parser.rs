@@ -2,6 +2,7 @@ use anyhow::Ok;
 use anyhow::Result;
 use pest::Parser;
 use pest_derive::Parser;
+use std::process::{Child, Command, Stdio};
 
 #[derive(Parser)]
 #[grammar = "shell.pest"]
@@ -14,48 +15,42 @@ pub struct SimpleCommand<'a> {
 }
 
 #[derive(Debug)]
-struct Pipeline<'a> {
-    commands: Vec<SimpleCommand<'a>>,
-}
-use std::process::{Child, Command, Stdio};
-fn run_outer_cmd(
-    cmds: &[SimpleCommand],
-    input: Stdio,
-    tail_stdout: Stdio,
-) -> std::io::Result<Child> {
-    match cmds {
-        [cmd] => Command::new(cmd.command_name)
-            .args(&cmd.args)
-            .stdin(input)
-            .stdout(tail_stdout)
-            .spawn(),
-        [cmd, rest @ ..] => {
-            let mut child = Command::new(cmd.command_name)
-                .args(&cmd.args)
-                .stdin(input)
-                .stdout(Stdio::piped())
-                .spawn()?;
-            let output = child.stdout.take().unwrap();
-            run_outer_cmd(rest, output.into(), tail_stdout)
-        }
-        _ => unreachable!(),
-    }
-}
-
-#[derive(Debug)]
 struct RedirectFile<'a> {
     file: &'a str,
     append: bool,
 }
 
 #[derive(Debug)]
-pub struct OuterCommandLine<'a> {
-    pipeline: Pipeline<'a>,
+pub struct ExternCommandLine<'a> {
+    piped_cmds: Vec<SimpleCommand<'a>>,
     redirect: Option<RedirectFile<'a>>,
 }
 
-impl OuterCommandLine<'_> {
+impl ExternCommandLine<'_> {
     pub fn run(self) -> std::io::Result<()> {
+        fn run_extern_cmd(
+            piped_cmds: &[SimpleCommand],
+            input: Stdio,
+            tail_stdout: Stdio,
+        ) -> std::io::Result<Child> {
+            match piped_cmds {
+                [cmd] => Command::new(cmd.command_name)
+                    .args(&cmd.args)
+                    .stdin(input)
+                    .stdout(tail_stdout)
+                    .spawn(),
+                [cmd, rest @ ..] => {
+                    let mut child = Command::new(cmd.command_name)
+                        .args(&cmd.args)
+                        .stdin(input)
+                        .stdout(Stdio::piped())
+                        .spawn()?;
+                    let output = child.stdout.take().unwrap();
+                    run_extern_cmd(rest, output.into(), tail_stdout)
+                }
+                _ => unreachable!(),
+            }
+        }
         let input = Stdio::inherit();
         let tail_stdout = match self.redirect {
             Some(redirect) => {
@@ -68,16 +63,16 @@ impl OuterCommandLine<'_> {
             }
             None => Stdio::inherit(),
         };
-        let pipeline = self.pipeline.commands.as_slice();
-        let mut child = run_outer_cmd(pipeline, input, tail_stdout)?;
+        let piped_cmds = self.piped_cmds.as_slice();
+        let mut child = run_extern_cmd(piped_cmds, input, tail_stdout)?;
         child.wait()?;
-        std::io::Result::Ok(())
+        Result::Ok(())
     }
 }
 
 #[derive(Debug)]
 pub enum CommandLine<'a> {
-    Outer(OuterCommandLine<'a>),
+    Extern(ExternCommandLine<'a>),
     Builtin(SimpleCommand<'a>),
 }
 
@@ -85,7 +80,7 @@ use crate::builtin_cmd::exec_builtin;
 impl CommandLine<'_> {
     pub fn run(self) -> std::io::Result<()> {
         match self {
-            CommandLine::Outer(outer_cmd) => outer_cmd.run(),
+            CommandLine::Extern(extern_cmd) => extern_cmd.run(),
             CommandLine::Builtin(builtin_cmd) => {
                 exec_builtin(builtin_cmd.command_name, &builtin_cmd.args)
             }
@@ -99,7 +94,7 @@ pub fn parse_cmdline(cmd: &str) -> Result<CommandLine> {
         .ok_or(anyhow::Error::msg("不合法的命令行"))? // None implies legal command_line not found
         .into_inner()
         .next()
-        .unwrap(); // buildin_cmd or outer_cmd
+        .unwrap(); // builtin_cmd or outer_cmd
 
     match cmd_line.as_rule() {
         Rule::builtin_cmd => {
@@ -110,16 +105,13 @@ pub fn parse_cmdline(cmd: &str) -> Result<CommandLine> {
         }
         Rule::outer_cmd => {
             let mut parts = cmd_line.into_inner();
-            let pipeline = parts.next().unwrap();
-            let commands = pipeline.into_inner();
-            let mut pipeline = Pipeline {
-                commands: Vec::new(),
-            };
+            let commands = parts.next().unwrap().into_inner();
+            let mut piped_cmds = Vec::new();
             for command in commands {
                 let mut command = command.into_inner();
                 let command_name = command.next().unwrap().as_str();
                 let args = command.map(|arg| arg.as_str()).collect();
-                pipeline.commands.push(SimpleCommand { command_name, args });
+                piped_cmds.push(SimpleCommand { command_name, args });
             }
 
             let redirect = parts.next().map(|redirect| {
@@ -128,7 +120,10 @@ pub fn parse_cmdline(cmd: &str) -> Result<CommandLine> {
                 RedirectFile { file, append }
             });
 
-            Ok(CommandLine::Outer(OuterCommandLine { pipeline, redirect }))
+            Ok(CommandLine::Extern(ExternCommandLine {
+                piped_cmds,
+                redirect,
+            }))
         }
         _ => unreachable!(),
     }
